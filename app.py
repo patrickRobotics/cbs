@@ -1,12 +1,52 @@
-from spyne import Application, rpc, ServiceBase, Unicode, Integer, Double, DateTime
-from spyne import ComplexModel
+from base64 import b64decode
+from spyne import (
+    Application, rpc, ServiceBase, Unicode, Integer, Double, DateTime, String)
+from spyne import ComplexModel, Array
 from spyne.protocol.soap import Soap11
 from spyne.server.wsgi import WsgiApplication
 from wsgiref.simple_server import make_server
 from datetime import datetime
 
 
-# Define enums matching the WSDL
+# Authentication credentials
+VALID_CREDENTIALS = {
+    'admin': 'pwd123'
+}
+
+
+def authenticate(environ):
+    """Check HTTP Basic Authentication"""
+    auth_header = environ.get('HTTP_AUTHORIZATION')
+    if not auth_header:
+        return False
+
+    try:
+        auth_type, auth_string = auth_header.split(None, 1)
+        if auth_type.lower() != 'basic':
+            return False
+
+        decoded = b64decode(auth_string).decode('utf-8')
+        username, password = decoded.split(':', 1)
+        return VALID_CREDENTIALS.get(username) == password
+    except Exception:
+        return False
+
+
+class AuthenticatedWsgiApplication(WsgiApplication):
+    """WSGI middleware that adds authentication measures"""
+
+    def __call__(self, environ, start_response):
+        if not authenticate(environ):
+            start_response('401 Unauthorized', [
+                ('Content-Type', 'text/plain'),
+                ('WWW-Authenticate', 'Basic realm="SOAP API"')
+            ])
+            return [b'Authentication required']
+
+        return super().__call__(environ, start_response)
+
+
+# ================== COMMON ENUMS ==================
 class Gender(Unicode):
     class Values:
         MALE = "MALE"
@@ -27,9 +67,24 @@ class Status(Unicode):
         INACTIVE = "INACTIVE"
 
 
-# Define complex types with proper namespace and element names
+class Currency(Unicode):
+    class Values:
+        TZS = "TZS"
+        KES = "KES"
+        UGX = "UGX"
+        USD = "USD"
+        GBP = "GBP"
+        EURO = "EURO"
+        PKR = "PKR"
+        NGN = "NGN"
+        EGP = "EGP"
+        ETB = "ETB"
+
+
+# ================== KYC SERVICE ==================
 class CustomerType(ComplexModel):
     __namespace__ = "http://credable.io/cbs/customer"
+    __type_name__ = "customer"
 
     createdAt = DateTime(min_occurs=0)
     createdDate = DateTime(min_occurs=0)
@@ -49,23 +104,21 @@ class CustomerType(ComplexModel):
     updatedAt = DateTime(min_occurs=0)
 
 
-# Define request/response as top-level elements
 class CustomerRequest(ComplexModel):
     __namespace__ = "http://credable.io/cbs/customer"
-    __type_name__ = "CustomerRequest"  # Explicitly set to match WSDL
+    __type_name__ = "CustomerRequest"
     customerNumber = Unicode()
 
 
 class CustomerResponse(ComplexModel):
     __namespace__ = "http://credable.io/cbs/customer"
-    __type_name__ = "CustomerResponse"  # Explicitly set to match WSDL
+    __type_name__ = "CustomerResponse"
     customer = CustomerType
 
 
-# Create the service with exact WSDL matching
 class CustomerPortService(ServiceBase):
-    @rpc(CustomerRequest, _returns=CustomerResponse, _body_style="bare",
-         _in_message_name="CustomerRequest", _out_message_name="CustomerResponse")
+    @rpc(CustomerRequest, _returns=CustomerResponse,
+         _body_style="bare", _in_message_name="CustomerRequest", _out_message_name="CustomerResponse")
     def Customer(ctx, request):
         mock_customers = {
             "234774784": {
@@ -156,35 +209,223 @@ class CustomerPortService(ServiceBase):
         }
 
         customer_number = request.customerNumber
-        customer_data = mock_customers.get(customer_number)
-
-        if customer_data:
-            return CustomerResponse(customer=CustomerType(**customer_data))
-        else:
-            return CustomerResponse(customer=CustomerType(customerNumber=customer_number))
+        customer_data = mock_customers.get(customer_number, {})
+        return CustomerResponse(customer=CustomerType(**customer_data))
 
 
-# Create the application with proper configuration
-application = Application(
+# ================== TRANSACTION SERVICE ==================
+class TransactionDataType(ComplexModel):
+    __namespace__ = "http://credable.io/cbs/transaction"
+    __type_name__ = "transactionData"
+
+    accountNumber = Unicode(min_occurs=0, max_length=24)
+    alternativechanneltrnscrAmount = Double()
+    alternativechanneltrnscrNumber = Integer()
+    alternativechanneltrnsdebitAmount = Double()
+    alternativechanneltrnsdebitNumber = Integer()
+    atmTransactionsNumber = Integer()
+    atmtransactionsAmount = Double()
+    bouncedChequesDebitNumber = Integer()
+    bouncedchequescreditNumber = Integer()
+    bouncedchequetransactionscrAmount = Double()
+    bouncedchequetransactionsdrAmount = Double()
+    chequeDebitTransactionsAmount = Double()
+    chequeDebitTransactionsNumber = Double()
+    createdAt = Unicode(min_occurs=0, max_length=14)
+    createdDate = Unicode(min_occurs=0, max_length=14)
+    credittransactionsAmount = Double()
+    debitcardpostransactionsAmount = Double()
+    debitcardpostransactionsNumber = Double()
+    fincominglocaltransactioncrAmount = Double()
+    id = Integer()
+    incominginternationaltrncrAmount = Double()
+    incominginternationaltrncrNumber = Integer()
+    incominglocaltransactioncrNumber = Integer()
+    intrestAmount = Integer()
+    lastTransactionDate = Unicode(min_occurs=0, max_length=14)
+    lastTransactionType = String()
+    lastTransactionValue = Integer()
+    maxAtmTransactions = Double()
+    maxMonthlyBebitTransactions = Double()
+    maxalternativechanneltrnscr = Double()
+    maxalternativechanneltrnsdebit = Double()
+    maxbouncedchequetransactionscr = Double()
+    maxchequedebittransactions = Double()
+    maxdebitcardpostransactions = Double()
+    maxincominginternationaltrncr = Double()
+    maxincominglocaltransactioncr = Double()
+    maxmobilemoneycredittrn = Double()
+    maxmobilemoneydebittransaction = Double()
+    axmonthlycredittransactions = Double()
+    maxoutgoinginttrndebit = Double()
+    maxoutgoinglocaltrndebit = Double()
+    maxoverthecounterwithdrawals = Double()
+    minAtmTransactions = Double()
+    minMonthlyDebitTransactions = Double()
+    minalternativechanneltrnscr = Double()
+    minalternativechanneltrnsdebit = Double()
+    minbouncedchequetransactionscr = Double()
+    minchequedebittransactions = Double()
+    mindebitcardpostransactions = Double()
+    minincominglocaltransactioncr = Double()
+    minincominginternationaltrncr = Double()
+    minmobilemoneycredittrn = Double()
+    minmobilemoneydebittransaction = Double()
+    minmonthlycredittransactions = Double()
+    minoutgoinginttrndebit = Double()
+    minoutgoinglocaltrndebit = Double()
+    minoverthecounterwithdrawals = Double()
+    mobilemoneycredittransactionAmount = Double()
+    mobilemoneycredittransactionNumber = Integer()
+    mobilemoneydebittransactionAmount = Double()
+    mobilemoneydebittransactionNumber = Integer()
+    monthlyBalance = Double()
+    monthlydebittransactionsAmount = Double()
+    outgoinginttransactiondebitAmount = Double()
+    outgoinginttrndebitNumber = Integer()
+    outgoinglocaltransactiondebitAmount = Double()
+    outgoinglocaltransactiondebitNumber = Integer()
+    overdraftLimit = Double()
+    overthecounterwithdrawalsAmount = Double()
+    overthecounterwithdrawalsNumber = Integer()
+    transactionValue = Double()
+    updatedAt = Unicode(min_occurs=0, max_length=14)
+
+
+class TransactionsRequest(ComplexModel):
+    __namespace__ = "http://credable.io/cbs/transaction"
+    __type_name__ = "TransactionsRequest"
+    customerNumber = Unicode()
+
+
+class TransactionsResponse(ComplexModel):
+    __namespace__ = "http://credable.io/cbs/transaction"
+    __type_name__ = "TransactionsResponse"
+    transactions = Array(TransactionDataType)
+
+
+class TransactionDataPortService(ServiceBase):
+    @rpc(TransactionsRequest, _returns=TransactionsResponse,
+         _body_style="bare",
+         _in_message_name="TransactionsRequest",
+         _out_message_name="TransactionsResponse")
+    def Transactions(ctx, request):
+        mock_transactions = {
+            "CUST1001": [{
+                "accountNumber": "332216783322167555621628",
+                "alternativechanneltrnscrAmount": 27665.6889301,
+                "alternativechanneltrnscrNumber": 0,
+                "alternativechanneltrnsdebitAmount": 2.9997265951905E7,
+                "alternativechanneltrnsdebitNumber": 114,
+                "atmTransactionsNumber": 36934417,
+                "atmtransactionsAmount": 192538.94,
+                "bouncedChequesDebitNumber": 535,
+                "bouncedchequescreditNumber": 0,
+                "bouncedchequetransactionscrAmount": 1.37,
+                "bouncedchequetransactionsdrAmount": 2602.4,
+                "chequeDebitTransactionsAmount": 2765.57,
+                "chequeDebitTransactionsNumber": 6,
+                "createdAt": "1401263420000",
+                "createdDate": "1350538588000",
+                "credittransactionsAmount": 0.0,
+                "debitcardpostransactionsAmount": 117347.063,
+                "debitcardpostransactionsNumber": 931309756,
+                "fincominglocaltransactioncrAmount": 2552389.4,
+                "id": 5,
+                "incominginternationaltrncrAmount": 76.160425,
+                "incominginternationaltrncrNumber": 285700400,
+                "incominglocaltransactioncrNumber": 1,
+                "intrestAmount": 22,
+                "lastTransactionDate": "554704439000",
+                "lastTransactionType": "Null",
+                "lastTransactionValue": 1,
+                "maxAtmTransactions": 0.0,
+                "maxMonthlyBebitTransactions": 7.8272009E7,
+                "maxalternativechanneltrnscr": 0.0,
+                "maxalternativechanneltrnsdebit": 0.0,
+                "maxbouncedchequetransactionscr": 0.0,
+                "maxchequedebittransactions": 0.0,
+                "maxdebitcardpostransactions": 5.468080253826023E15,
+                "maxincominginternationaltrncr": 0.0,
+                "maxincominglocaltransactioncr": 0.0,
+                "maxmobilemoneycredittrn": 0.0,
+                "maxmobilemoneydebittransaction": 0.0,
+                "axmonthlycredittransactions": 0.0,
+                "maxoutgoinginttrndebit": 0.0,
+                "axoutgoinglocaltrndebit": 0.0,
+                "maxoverthecounterwithdrawals": 6.09866462E8,
+                "minAtmTransactions": 0.0,
+                "minMonthlyDebitTransactions": 0.0,
+                "minalternativechanneltrnscr": 0.0,
+                "minalternativechanneltrnsdebit": 0.0,
+                "minbouncedchequetransactionscr": 0.0,
+                "minchequedebittransactions": 0.0,
+                "mindebitcardpostransactions": 4.716295906413E12,
+                "minincominginternationaltrncr": 0.0,
+                "minincominglocaltransactioncr": 0.0,
+                "minmobilemoneycredittrn": 0.0,
+                "minmobilemoneydebittransaction": 0.0,
+                "minmonthlycredittransactions": 29624.78,
+                "minoutgoinginttrndebit": 0.0,
+                "minoutgoinglocaltrndebit": 0.0,
+                "minoverthecounterwithdrawals": 1.00927826E8,
+                "mobilemoneycredittransactionAmount": 349693.8071922,
+                "mobilemoneycredittransactionNumber": 4092,
+                "mobilemoneydebittransactionAmount": 1.87382823746E7,
+                "mobilemoneydebittransactionNumber": 0,
+                "monthlyBalance": 2205.0,
+                "monthlydebittransactionsAmount": 295.6677,
+                "outgoinginttransactiondebitAmount": 9.561730814,
+                "outgoinginttrndebitNumber": 0,
+                "outgoinglocaltransactiondebitAmount": 56.03,
+                "outgoinglocaltransactiondebitNumber": 0,
+                "overdraftLimit": 7.0,
+                "overthecounterwithdrawalsAmount": 3.72849038239E8,
+                "overthecounterwithdrawalsNumber": 546382904,
+                "transactionValue": 3500.0,
+                "upDatedAt": "773556430000"
+            }]
+        }
+
+        customer_number = request.customerNumber
+        transactions = mock_transactions.get(customer_number, [])
+        return TransactionsResponse(transactions=transactions)
+
+
+# ================== APPLICATION SETUP ==================
+kyc_app = Application(
     [CustomerPortService],
     'http://credable.io/cbs/customer',
     in_protocol=Soap11(validator='lxml'),
     out_protocol=Soap11(),
-    name="CustomerPortService"
+    name='CustomerPortService'
+)
+
+transaction_app = Application(
+    [TransactionDataPortService],
+    'http://credable.io/cbs/transaction',
+    in_protocol=Soap11(validator='lxml'),
+    out_protocol=Soap11(),
+    name='TransactionDataPortService'
 )
 
 
-# WSGI application with proper routing
-def soap_application(environ, start_response):
+# ================== WSGI DISPATCHER WITH AUTH ==================
+def soap_dispatcher(environ, start_response):
     path = environ['PATH_INFO']
-    if path in ['/service/customer', '/service/customer?wsdl']:
-        return WsgiApplication(application)(environ, start_response)
+
+    if path == '/service/customer' or path == '/service/customer?wsdl':
+        return AuthenticatedWsgiApplication(kyc_app)(environ, start_response)
+    elif path == '/service/transaction-data' or path == '/service/transaction-data?wsdl':
+        return AuthenticatedWsgiApplication(transaction_app)(environ, start_response)
+
     start_response('404 Not Found', [('Content-Type', 'text/plain')])
     return [b'404 Not Found']
 
 
+# ================== MAIN SERVER ==================
 if __name__ == '__main__':
-    server = make_server('0.0.0.0', 8093, soap_application)
-    print("SOAP Service running at: http://localhost:8093/service/customer")
-    print("WSDL available at: http://localhost:8093/service/customer?wsdl")
+    server = make_server('0.0.0.0', 8093, soap_dispatcher)
+    print(" - KYC Service: http://localhost:8093/service/customer")
+    print(" - Transaction Service: http://localhost:8093/service/transaction-data")
     server.serve_forever()
