@@ -124,7 +124,7 @@ class CustomerPortService(ServiceBase):
             "234774784": {
                 "createdAt": datetime.now(),
                 "createdDate": datetime.now(),
-                "customerNumber": "CUST1001",
+                "customerNumber": "234774784",
                 "dob": datetime(1985, 5, 20),
                 "email": "john.doe@example.com",
                 "firstName": "John",
