@@ -1,3 +1,4 @@
+import os
 from base64 import b64decode
 from spyne import (
     Application, rpc, ServiceBase, Unicode, Integer, Double, DateTime, String)
@@ -6,11 +7,17 @@ from spyne.protocol.soap import Soap11
 from spyne.server.wsgi import WsgiApplication
 from wsgiref.simple_server import make_server
 from datetime import datetime
+from dotenv import load_dotenv
 
+
+load_dotenv()
+
+SOAP_USER = os.getenv('USER_NAME')
+SOAP_PASS = os.getenv('PASSWORD')
 
 # Authentication credentials
 VALID_CREDENTIALS = {
-    'admin': 'pwd123'
+    SOAP_USER: SOAP_PASS
 }
 
 
